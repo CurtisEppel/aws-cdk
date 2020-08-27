@@ -340,6 +340,40 @@ export = {
     test.done();
   },
 
+  'add vertical annotations to graph'(test: Test) {
+    // WHEN
+    const stack = new Stack();
+    const annotationLabel = "Deployment #000"
+    const annotationValue = new Date(2020, 08, 27, 10, 0, 0)
+    const widget = new GraphWidget({
+      title: 'My fancy graph',
+      left: [
+        new Metric({ namespace: 'CDK', metricName: 'Test' }),
+      ],
+      verticalAnnotations: [{ label: annotationLabel, value: annotationValue }, [{ label: `${annotationLabel}-start`, value: annotationValue }, { label: `${annotationLabel}-end`, value: annotationValue} ]],
+    });
+
+    // THEN
+    test.deepEqual(stack.resolve(widget.toJson()), [{
+      type: 'metric',
+      width: 6,
+      height: 6,
+      properties: {
+        view: 'timeSeries',
+        title: 'My fancy graph',
+        region: { Ref: 'AWS::Region' },
+        metrics: [
+          ['CDK', 'Test'],
+        ],
+        annotations: {
+          vertical: [{ label: annotationLabel, value: annotationValue.toISOString() }, [{ label: `${annotationLabel}-start`, value: annotationValue.toISOString() }, { label: `${annotationLabel}-end`, value: annotationValue.toISOString() }]],
+        },
+        yAxis: {},
+      },
+    }]);
+
+    test.done();
+  },
   'convert alarm to annotation'(test: Test) {
     // GIVEN
     const stack = new Stack();

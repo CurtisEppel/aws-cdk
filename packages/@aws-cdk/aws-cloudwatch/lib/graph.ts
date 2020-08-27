@@ -121,6 +121,25 @@ export class AlarmWidget extends ConcreteWidget {
   }
 }
 
+type ArrayLengthMutationKeys =
+  | 'splice'
+  | 'push'
+  | 'pop'
+  | 'shift'
+  | 'unshift'
+  | number
+type ArrayItems<T extends Array<any>> = T extends Array<infer TItems>
+  ? TItems
+  : never
+type FixedLengthArray<T extends any[]> = Pick<
+T,
+Exclude<keyof T, ArrayLengthMutationKeys>
+> & { [Symbol.iterator]: () => IterableIterator<ArrayItems<T>> }
+
+type BandVerticalAnnotation = FixedLengthArray<
+[VerticalAnnotation, VerticalAnnotation]
+>
+
 /**
  * Properties for a GraphWidget
  */
@@ -145,6 +164,12 @@ export interface GraphWidgetProps extends MetricWidgetProps {
    * @default - No annotations
    */
   readonly leftAnnotations?: HorizontalAnnotation[];
+
+  /**
+   * Add vertical annotations to mark the beginning and end of an operational event, or highlight a deployment
+   * time. You may also format your text with Markdown.
+   */
+  readonly verticalAnnotations?: Array<VerticalAnnotation | BandVerticalAnnotation>
 
   /**
    * Annotations for the right Y axis
@@ -206,6 +231,10 @@ export class GraphWidget extends ConcreteWidget {
       ...(this.props.rightAnnotations || []).map(mapAnnotation('right')),
     ];
 
+    const verticalAnnotations = this.props.verticalAnnotations?.map((annotation: any) =>
+      mapVerticalAnnotation(annotation));
+
+
     const metrics = allMetricsGraphJson(this.props.left || [], this.props.right || []);
     return [{
       type: 'metric',
@@ -219,7 +248,10 @@ export class GraphWidget extends ConcreteWidget {
         region: this.props.region || cdk.Aws.REGION,
         stacked: this.props.stacked,
         metrics: metrics.length > 0 ? metrics : undefined,
-        annotations: horizontalAnnotations.length > 0 ? { horizontal: horizontalAnnotations } : undefined,
+        annotations: {
+          horizontal: horizontalAnnotations,
+          vertical: verticalAnnotations,
+        },
         yAxis: {
           left: this.props.leftYAxis !== undefined ? this.props.leftYAxis : undefined,
           right: this.props.rightYAxis !== undefined ? this.props.rightYAxis : undefined,
@@ -276,6 +308,53 @@ export class SingleValueWidget extends ConcreteWidget {
     }];
   }
 }
+
+/**
+ * Vertical Annotations for time series widgets
+ */
+export interface VerticalAnnotation {
+  /**
+   * The date and time in the graph where the vertical annotation line is to appear.
+   * On a band shading annotation, the two values for Value define the beginning
+   * and ending edges of the band.
+   *
+   * On a graph with vertical annotations, the graph is scaled so that all visible
+   * vertical annotations appear on the graph.
+   *
+   * @default - new Date()
+   */
+  readonly value?: Date
+  /**
+   * A string that appears on the graph next to the annotation.
+   *
+   * @default - timestamp
+   */
+  readonly label?: string
+  /**
+   * The six-digit HTML hex color code to be used for the annotation. This color
+   * is used for both the annotation line and the fill shading.
+   *
+   * @default - randomly assigned
+   */
+  readonly color?: Color
+  /**
+   * Add shading before or after the annotation.
+   *
+   * The exception is an annotation with band shading. These annotations always have
+   * shading between the two values, and any value for fill is ignored.
+   *
+   * @default - no shading
+   */
+  readonly fill?: ShadingVertical
+  /**
+   * Set this to true to have the annotation appear in the graph, or false to have it
+   * be hidden.
+   *
+   * @default true
+   */
+  readonly visible?: boolean
+}
+
 
 /**
  * Horizontal annotation to be added to a graph
@@ -337,6 +416,26 @@ export enum Shading {
 }
 
 /**
+ * Fill shading options that will be used with a vertical annotation
+ */
+export enum ShadingVertical {
+  /**
+   * Don't add shading
+   */
+  NONE = 'none',
+
+  /**
+   * Add shading before the annotation
+   */
+  BEFORE = 'before',
+
+  /**
+   * Add shading after the annotation
+   */
+  AFTER = 'after'
+}
+
+/**
  * A set of standard colours that can be used in annotations in a GraphWidget.
  */
 export class Color {
@@ -390,3 +489,27 @@ function mapAnnotation(yAxis: string): ((x: HorizontalAnnotation) => any) {
     return { ...a, yAxis };
   };
 }
+
+function mapVerticalAnnotation(
+  annotation: VerticalAnnotation | BandVerticalAnnotation,
+): any {
+  return (annotation as VerticalAnnotation)
+    ? {
+      ...annotation,
+      value:
+            (annotation as VerticalAnnotation)?.value?.toISOString() ??
+            new Date().toISOString(),
+    }
+    : [
+      {
+        ...(annotation as BandVerticalAnnotation)[0],
+        value: (annotation as BandVerticalAnnotation)[0].value?.toISOString() ?? new Date().toISOString(),
+
+      },
+      {
+        ...(annotation as BandVerticalAnnotation)[1],
+        value: (annotation as BandVerticalAnnotation)[1].value?.toISOString() ?? new Date().toISOString(),
+      },
+    ];
+}
+
